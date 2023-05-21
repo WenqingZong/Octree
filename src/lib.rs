@@ -1,5 +1,6 @@
-//! A highly optimized octree implementation, with threading enabled for improved efficiency. This octree implementation is also capable of tracking highly dynamic environment.
+//! A highly optimized [octree](https://en.wikipedia.org/wiki/Octree) implementation, with threading enabled for improved efficiency. This octree implementation is also capable of tracking highly dynamic environment.
 
+pub mod point;
 /// Calculates the location of your object in a 3d space.
 pub trait Locatable {
     fn get_location(&self) -> [f32; 3];
@@ -8,14 +9,22 @@ pub trait Locatable {
 #[derive(Debug)]
 pub struct Octree<'tree_element, L: Locatable> {
     /// Put references to tree elements in a vec.
-    points: &'tree_element Vec<L>,
+    pub points: &'tree_element Vec<L>,
 
     /// Use two points to define space bound.
-    top_right_front: [f32; 3],
-    bottom_left_back: [f32; 3],
+    pub top_right_front: [f32; 3],
+    pub bottom_left_back: [f32; 3],
 }
 
 impl<'tree_element, L: Locatable> Octree<'tree_element, L> {
+    /// Build an [Octree] instance from a list of points.
+    /// # Example
+    /// ```rust
+    /// use octree::point::Point3D;
+    /// use octree::{Octree, Locatable};
+    /// let points: Vec<Point3D> = Vec::new();
+    /// let octree = Octree::new(&points);
+    /// ```
     pub fn new(points: &'tree_element Vec<L>) -> Self {
         let top_right_front = if points.is_empty() {
             [f32::MAX, f32::MAX, f32::MAX]
@@ -37,14 +46,17 @@ impl<'tree_element, L: Locatable> Octree<'tree_element, L> {
         }
     }
 
+    /// Getter, returns a reference to the list which holds actual tree points data.
     pub fn points(&self) -> &Vec<L> {
         self.points
     }
 
+    /// Getter, returns a reference to the positive boundary.
     pub fn top_right_front(&self) -> &[f32; 3] {
         &self.top_right_front
     }
 
+    /// Getter, returns a reference to the negative boundary.
     pub fn bottom_left_back(&self) -> &[f32; 3] {
         &self.bottom_left_back
     }
@@ -52,29 +64,13 @@ impl<'tree_element, L: Locatable> Octree<'tree_element, L> {
 
 #[cfg(test)]
 mod tests {
+    use super::point::Point3D;
     use super::*;
-
-    #[derive(Debug, PartialEq)]
-    pub struct Point3D {
-        x: f32,
-        y: f32,
-        z: f32,
-    }
-
-    impl Locatable for Point3D {
-        fn get_location(&self) -> [f32; 3] {
-            [self.x, self.y, self.z]
-        }
-    }
 
     #[test]
     /// Should be able to get 3D location for anything implements Locatable trait.
     fn location_trait() {
-        let point = Point3D {
-            x: 0.0,
-            y: 0.0,
-            z: 0.0,
-        };
+        let point = Point3D::default();
 
         assert_eq!(point.get_location(), [0.0, 0.0, 0.0]);
     }
