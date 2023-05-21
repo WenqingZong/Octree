@@ -2,6 +2,9 @@
 name = "octree"
 version = "0.1.0"
 edition = "2021"
+authors = ["Wenqing Zong wenqing.zong98@gmail.com"]
+license = "Apache-2.0"
+description = "A highly optimised Octree library"
 
 [lib]
 name = "octree"
