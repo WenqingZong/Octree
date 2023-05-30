@@ -7,59 +7,81 @@ pub trait Locatable {
 }
 
 #[derive(Debug)]
-pub struct Octree<'tree_element, L: Locatable> {
-    /// Put references to tree elements in a vec.
-    pub points: &'tree_element Vec<L>,
-
-    /// Use two points to define space bound.
-    pub top_right_front: [f32; 3],
-    pub bottom_left_back: [f32; 3],
+pub struct Octree<'point, L> {
+    root: Option<Box<TreeNode<'point, L>>>,
 }
 
-impl<'tree_element, L: Locatable> Octree<'tree_element, L> {
-    /// Build an [Octree] instance from a list of points.
-    /// # Example
-    /// ```rust
-    /// use octree::point::Point3D;
-    /// use octree::{Octree, Locatable};
-    /// let points: Vec<Point3D> = Vec::new();
-    /// let octree = Octree::new(&points);
-    /// ```
-    pub fn new(points: &'tree_element Vec<L>) -> Self {
-        let top_right_front = if points.is_empty() {
-            [f32::MAX, f32::MAX, f32::MAX]
-        } else {
-            // Dummy for now.
-            [f32::MAX - 1.0, f32::MAX, f32::MAX]
-        };
-        let bottom_left_back = if points.is_empty() {
-            [-f32::MAX, -f32::MAX, -f32::MAX]
-        } else {
-            // Dummy for now.
-            [-f32::MAX + 1.0, -f32::MAX, -f32::MAX]
-        };
+#[derive(Debug)]
+struct TreeNode<'point, L> {
+    children: [Option<Box<TreeNode<'point, L>>>; 8],
+    bounding_box: BoundingBox,
+    points: Vec<&'point L>,
+}
 
-        Self {
-            points,
-            top_right_front,
-            bottom_left_back,
+#[derive(Debug)]
+struct BoundingBox {
+    min: [f32; 3],
+    max: [f32; 3],
+}
+
+impl<'point, L> Octree<'point, L> where L: Locatable {}
+
+impl<'point, L> TreeNode<'point, L> where L: Locatable {}
+
+impl BoundingBox {
+    fn new<L>(points: &Vec<L>) -> Self
+    where
+        L: Locatable,
+    {
+        let mut min = [f32::MAX, f32::MAX, f32::MAX];
+        let mut max = [f32::MIN, f32::MIN, f32::MIN];
+
+        for point in points {
+            let location = point.get_location();
+            for i in 0..3 {
+                min[i] = min[i].min(location[i]);
+                max[i] = max[i].max(location[i]);
+            }
         }
+
+        BoundingBox { min, max }
     }
 
-    /// Getter, returns a reference to the list which holds actual tree points data.
-    pub fn points(&self) -> &Vec<L> {
-        self.points
+    fn contains(&self, point: &[f32; 3]) -> bool {
+        self.min[0] <= point[0]
+            && point[0] < self.max[0]
+            && self.min[1] <= point[1]
+            && point[1] < self.max[1]
+            && self.min[2] <= point[2]
+            && point[2] < self.max[2]
     }
 
-    /// Getter, returns a reference to the positive boundary.
-    pub fn top_right_front(&self) -> &[f32; 3] {
-        &self.top_right_front
+    fn overlaps(&self, other: &BoundingBox) -> bool {
+        let other_point1 = other.min;
+        let other_point2 = [other.min[0], other.min[1], other.max[2]];
+        let other_point3 = [other.min[0], other.max[1], other.min[2]];
+        let other_point4 = [other.min[0], other.max[1], other.max[2]];
+        let other_point5 = [other.max[0], other.min[1], other.min[2]];
+        let other_point6 = [other.max[0], other.min[1], other.max[2]];
+        let other_point7 = [other.max[0], other.max[1], other.min[2]];
+        let other_point8 = other.max;
+        for point in [
+            other_point1,
+            other_point2,
+            other_point3,
+            other_point4,
+            other_point5,
+            other_point6,
+            other_point7,
+            other_point8,
+        ] {
+            if self.contains(&point) {
+                return true;
+            }
+        }
+        false
     }
 
-    /// Getter, returns a reference to the negative boundary.
-    pub fn bottom_left_back(&self) -> &[f32; 3] {
-        &self.bottom_left_back
-    }
 }
 
 #[cfg(test)]
@@ -68,24 +90,48 @@ mod tests {
     use super::*;
 
     #[test]
-    /// Should be able to get 3D location for anything implements Locatable trait.
-    fn location_trait() {
-        let point = Point3D::default();
+    fn test_bounding_box_construction() {
+        let point1 = Point3D::new(10.0, 0.0, 0.0);
+        let point2 = Point3D::new(0.0, -1.0, 0.0);
+        let point3 = Point3D::new(0.0, 0.0, 5.0);
+        let bounding_box = BoundingBox::new(&vec![point1, point2, point3]);
 
-        assert_eq!(point.get_location(), [0.0, 0.0, 0.0]);
+        assert_eq!(bounding_box.min, [0.0, -1.0, 0.0]);
+        assert_eq!(bounding_box.max, [10.0, 0.0, 5.0]);
     }
 
     #[test]
-    /// Should successfully build an octree with default boundaries if from empty point list.
-    fn build_default_octree_from_empty_points() {
-        let points: Vec<Point3D> = Vec::new();
-        let octree = Octree::new(&points);
+    fn test_bounding_box_contains() {
+        let point1 = Point3D::new(0.0, 0.0, 0.0);
+        let point2 = Point3D::new(10.0, 10.0, 10.0);
+        let bounding_box = BoundingBox::new(&vec![point1, point2]);
+        let point3 = Point3D::new(5.0, 5.0, 5.0);
+        let point4 = Point3D::new(10.0, 11.0, 9.0);
 
-        assert_eq!(octree.points(), &points);
-        assert_eq!(octree.top_right_front(), &[f32::MAX, f32::MAX, f32::MAX]);
-        assert_eq!(
-            octree.bottom_left_back(),
-            &[-f32::MAX, -f32::MAX, -f32::MAX]
-        );
+        assert!(bounding_box.contains(&point3.get_location()));
+        assert!(!bounding_box.contains(&point4.get_location()));
+    }
+
+    #[test]
+    fn test_bounding_box_overlaps() {
+        let point1 = Point3D::new(0.0, 0.0, 0.0);
+        let point2 = Point3D::new(10.0, 10.0, 10.0);
+        let bounding_box1 = BoundingBox::new(&vec![point1, point2]);
+
+        let point3 = Point3D::new(1.0, 1.0, 1.0);
+        let point4 = Point3D::new(11.0, 11.0, 11.0);
+        let bounding_box2 = BoundingBox::new(&vec![point3, point4]);
+
+        let point5 = Point3D::new(1.0, 1.0, 1.0);
+        let point6 = Point3D::new(9.0, 9.0, 9.0);
+        let bounding_box3 = BoundingBox::new(&vec![point5, point6]);
+
+        let point7 = Point3D::new(11.0, 0.0, 0.0);
+        let point8 = Point3D::new(20.0, 20.0, 20.0);
+        let bounding_box4 = BoundingBox::new(&vec![point7, point8]);
+
+        assert!(bounding_box1.overlaps(&bounding_box2));
+        assert!(bounding_box1.overlaps(&bounding_box3));
+        assert!(!bounding_box1.overlaps(&bounding_box4));
     }
 }
