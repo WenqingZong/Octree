@@ -13,20 +13,23 @@ pub struct Octree<'point, L> {
 
 #[derive(Debug)]
 pub struct TreeNode<'point, L> {
-    children: [Option<Box<TreeNode<'point, L>>>; 8],
+    children: Option<[Box<TreeNode<'point, L>>; 8]>,
     bounding_box: BoundingBox,
     points: Vec<&'point L>,
     capacity: usize,
     splitted: bool,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BoundingBox {
     min: [f32; 3],
     max: [f32; 3],
 }
 
-impl<'point, L> Octree<'point, L> where L: Locatable {
+impl<'point, L> Octree<'point, L>
+where
+    L: Locatable,
+{
     pub fn new(points: Vec<&L>) -> Self {
         todo!()
         // Self {
@@ -34,29 +37,33 @@ impl<'point, L> Octree<'point, L> where L: Locatable {
         // }
     }
 
-    pub fn insert(&mut self, points: &L) {
+    pub fn insert(&mut self, point: &L) {}
 
-    }
-
-    pub fn delete(&mut self, point: &L) {
-
-    }
+    pub fn delete(&mut self, point: &L) {}
 
     pub fn query(&self, bounding_box: &BoundingBox) -> Vec<&L> {
         todo!()
     }
-}
 
-impl<'point, L> Default for Octree<'point, L> where L: Locatable {
-    fn default() -> Self {
-        Self {
-            root: None
-        }
+    pub fn contain(&self, point: &L) -> bool {
+        todo!();
     }
 }
 
-impl<'point, L> TreeNode<'point, L> where L: Locatable {
-    fn new(points: Vec<&'point L>) -> Self {
+impl<'point, L> Default for Octree<'point, L>
+where
+    L: Locatable,
+{
+    fn default() -> Self {
+        Self { root: None }
+    }
+}
+
+impl<'point, L> TreeNode<'point, L>
+where
+    L: Locatable,
+{
+    pub fn new(points: Vec<&'point L>) -> Self {
         let mut tree_node: TreeNode<L> = TreeNode {
             // So the created bounding box contains every point in points.
             bounding_box: BoundingBox::new(points.clone()),
@@ -70,19 +77,65 @@ impl<'point, L> TreeNode<'point, L> where L: Locatable {
         tree_node
     }
 
-    fn insert(&mut self, point: &'point L) {
+    fn insert(&mut self, point: &'point L) -> bool {
+        if !self.contains(point) {
+            return false;
+        }
         if self.points.len() < self.capacity {
             self.points.push(point);
+            true
+        } else {
+            if !self.splitted {
+                self.split();
+            }
+
+            assert!(self.children.is_some());
+            for child in self.children.as_mut().unwrap().iter_mut() {
+                let child = child.as_mut();
+                if child.insert(point) {
+                    return true;
+                }
+            }
+            false
         }
+    }
+
+    fn split(&mut self) {
+        assert!(self.children.is_none());
+        self.splitted = true;
+        // children: Option<[Box<TreeNode<'point, L>>; 8]>,
+        let splitted_bounding_boxes = self.bounding_box.split();
+
+        let mut children = [
+            Box::new(TreeNode::default()),
+            Box::new(TreeNode::default()),
+            Box::new(TreeNode::default()),
+            Box::new(TreeNode::default()),
+            Box::new(TreeNode::default()),
+            Box::new(TreeNode::default()),
+            Box::new(TreeNode::default()),
+            Box::new(TreeNode::default()),
+        ];
+
+        for (i, splitted_bounding_box) in splitted_bounding_boxes.iter().enumerate() {
+            children[i].bounding_box = splitted_bounding_box.clone();
+        }
+
+        self.children = Some(children);
+    }
+
+    fn contains(&self, point: &L) -> bool {
+        self.bounding_box.contains(&point.get_location())
     }
 }
 
-impl<'point, L> Default for TreeNode<'point, L> where L: Locatable {
+impl<'point, L> Default for TreeNode<'point, L>
+where
+    L: Locatable,
+{
     fn default() -> Self {
         Self {
-            // TODO: find another way to create an array with 8 None.
-            // Tried [None; 8], but Box<TreeNode<L>> does not implement Cody trait.
-            children: [None, None, None, None, None, None, None, None],
+            children: None,
             bounding_box: BoundingBox::default(),
             points: Vec::new(),
             capacity: 8,
@@ -145,6 +198,14 @@ impl BoundingBox {
         false
     }
 
+    pub fn get_centre(&self) -> [f32; 3] {
+        let mut ret = [0.0; 3];
+        for (i, coordinate) in ret.iter_mut().enumerate() {
+            *coordinate = (self.min[i] + self.max[i]) / 2.0;
+        }
+        ret
+    }
+
     pub fn get_min(&self) -> &[f32; 3] {
         &self.min
     }
@@ -152,13 +213,66 @@ impl BoundingBox {
     pub fn get_max(&self) -> &[f32; 3] {
         &self.max
     }
+
+    pub fn split(&self) -> [Self; 8] {
+        let centre = self.get_centre();
+        let min = self.min;
+        let max = self.max;
+        let mut ret = [
+            Self::default(),
+            Self::default(),
+            Self::default(),
+            Self::default(),
+            Self::default(),
+            Self::default(),
+            Self::default(),
+            Self::default(),
+        ];
+        // u: up, d: down, f: front, b: back, l: left, r: right.
+        // example, ulb is the left back corner in the upper layer.
+        // order: dfl, dfr, dbl, dbr, ufl, ufr, ubl, ubr.
+
+        // dfl
+        ret[0].min = min;
+        ret[0].max = centre;
+
+        // dfr
+        ret[1].min = [centre[0], min[1], min[2]];
+        ret[1].max = [max[0], centre[1], centre[2]];
+
+        // dbl
+        ret[2].min = [min[0], centre[1], min[2]];
+        ret[2].max = [centre[0], max[1], centre[2]];
+
+        // dbr
+        ret[3].min = [centre[0], centre[1], min[2]];
+        ret[3].max = [max[0], max[1], centre[2]];
+
+        // ufl
+        ret[4].min = [min[0], min[1], centre[2]];
+        ret[4].max = [centre[0], centre[1], max[2]];
+
+        // ufr
+        ret[5].min = [centre[0], min[1], centre[2]];
+        ret[5].max = [max[0], centre[1], max[2]];
+
+        // ubl
+        ret[6].min = [min[0], centre[1], centre[2]];
+        ret[6].max = [centre[0], max[1], max[2]];
+
+        // ubr
+        ret[7].min = centre;
+        ret[7].max = max;
+
+        ret
+    }
 }
 
 impl Default for BoundingBox {
     fn default() -> Self {
         Self {
-            min: [f32:: MAX, f32:: MAX, f32:: MAX],
-            max: [f32:: MIN, f32:: MIN, f32:: MIN],
+            min: [f32::MAX, f32::MAX, f32::MAX],
+            max: [f32::MIN, f32::MIN, f32::MIN],
         }
     }
 }
@@ -213,4 +327,75 @@ mod tests {
         assert!(bounding_box1.overlaps(&bounding_box3));
         assert!(!bounding_box1.overlaps(&bounding_box4));
     }
+
+    #[test]
+    fn test_bounding_box_centre() {
+        let point1 = Point3D::new(0.0, 0.0, 0.0);
+        let point2 = Point3D::new(10.0, 10.0, 10.0);
+        let bounding_box = BoundingBox::new(vec![point1, point2].iter().collect());
+
+        assert_eq!(bounding_box.get_centre(), [5.0; 3]);
+    }
+
+    #[test]
+    fn test_bounding_box_split() {
+        let point1 = Point3D::new(0.0, 0.0, 0.0);
+        let point2 = Point3D::new(10.0, 10.0, 10.0);
+        let bounding_box = BoundingBox::new(vec![point1, point2].iter().collect());
+
+        let splitted = bounding_box.split();
+
+        // u: up, d: down, f: front, b: back, l: left, r: right.
+        // example, ulb is the left back corner in the upper layer.
+        // order: dfl, dfr, dbl, dbr, ufl, ufr, ubl, ubr.
+
+        // dfl
+        assert_eq!(splitted[0].min, [0.0, 0.0, 0.0]);
+        assert_eq!(splitted[0].max, [5.0, 5.0, 5.0]);
+
+        // dfr
+        assert_eq!(splitted[1].min, [5.0, 0.0, 0.0]);
+        assert_eq!(splitted[1].max, [10.0, 5.0, 5.0]);
+
+        // dbl
+        assert_eq!(splitted[2].min, [0.0, 5.0, 0.0]);
+        assert_eq!(splitted[2].max, [5.0, 10.0, 5.0]);
+
+        // dbr
+        assert_eq!(splitted[3].min, [5.0, 5.0, 0.0]);
+        assert_eq!(splitted[3].max, [10.0, 10.0, 5.0]);
+
+        // ufl
+        assert_eq!(splitted[4].min, [0.0, 0.0, 5.0]);
+        assert_eq!(splitted[4].max, [5.0, 5.0, 10.0]);
+
+        // ufr
+        assert_eq!(splitted[5].min, [5.0, 0.0, 5.0]);
+        assert_eq!(splitted[5].max, [10.0, 5.0, 10.0]);
+
+        // ubl
+        assert_eq!(splitted[6].min, [0.0, 5.0, 5.0]);
+        assert_eq!(splitted[6].max, [5.0, 10.0, 10.0]);
+
+        // ubr
+        assert_eq!(splitted[7].min, [5.0, 5.0, 5.0]);
+        assert_eq!(splitted[7].max, [10.0, 10.0, 10.0]);
+    }
+
+    #[test]
+    fn test_tree_node_construction_no_split() {
+        let point1 = Point3D::new(0.0, 0.0, 0.0);
+        let point2 = Point3D::new(10.0, 10.0, 10.0);
+        let points = vec![point1.clone(), point2];
+        let point_references: Vec<&Point3D> = points.iter().collect();
+        let tree_node = TreeNode::new(point_references.clone());
+
+        assert!(tree_node.children.is_none());
+        assert_eq!(tree_node.bounding_box.min, [0.0, 0.0, 0.0]);
+        assert_eq!(tree_node.bounding_box.max, [10.0, 10.0, 10.0]);
+        assert_eq!(tree_node.points, vec![&point1]);
+        assert_eq!(tree_node.capacity, 8);
+        assert!(!tree_node.splitted);
+    }
+
 }
