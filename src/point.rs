@@ -34,3 +34,48 @@ impl Locatable for Point3D {
         [self.x, self.y, self.z]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn test_point3d_construction() {
+        let point = Point3D::new(0.0, 1.0, 2.0);
+        assert_eq!(point.x, 0.0);
+        assert_eq!(point.y, 1.0);
+        assert_eq!(point.z, 2.0);
+    }
+
+    #[test]
+    fn test_point3d_locatable() {
+        let point = Point3D::new(0.0, 1.0, 2.0);
+        assert_eq!(point.get_location(), [0.0, 1.0, 2.0]);
+    }
+
+    #[test]
+    fn test_point3d_equal() {
+        let point1 = Point3D::new(0.0, 1.0, 2.0);
+        let point2 = Point3D::new(0.0, 1.0, 2.0);
+        let point3 = Point3D::new(0.0, 0.0, 0.0);
+
+        assert!(point1.eq(&point2));
+        assert_eq!(&point1, &point2);
+
+        assert!(point1.ne(&point3));
+        assert_ne!(&point2, &point3);
+    }
+
+    #[test]
+    fn test_point3d_hash() {
+        let point1 = Point3D::new(0.0, 1.0, 2.0);
+        let point2 = Point3D::new(0.0, 1.0, 2.0);
+        let point3 = Point3D::new(0.0, 0.0, 0.0);
+
+        let set: HashSet<&Point3D> = vec![&point1].into_iter().collect();
+        assert!(set.contains(&point2));
+        assert!(!set.contains(&point3));
+    }
+
+}
