@@ -1,0 +1,41 @@
+name: Rust CI
+on:
+  push:
+    paths:
+      - src/*
+
+env:
+  RUSTFLAGS: "-Dwarnings"
+
+jobs:
+  code_quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: cargo check
+        run: cargo check --all
+
+      - name: cargo format check
+        run: cargo fmt --all --check
+
+      - name: cargo test
+        run: cargo test --all
+
+      - name: cargo clippy check
+        run: cargo clippy --all --all-targets --all-features
+
+  test_coverage:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+        - uses: actions/checkout@v3
+
+        - name: Install tarpaulin
+          run: cargo install cargo-tarpaulin
+
+        - name: Calculate code coverage
+          run: cargo tarpaulin --verbose --all-features --all --out=Xml
+
+        - name: Upload to codecov.io
+          uses: codecov/codecov-action@v3
