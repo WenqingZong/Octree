@@ -49,7 +49,7 @@ jobs:
       pages: write
       id-token: write
     steps:
-      - uses: actions/checkout@3
+      - uses: actions/checkout@v3
 
       - name: Build Documentaiton
         run: cargo doc --all --no-deps
