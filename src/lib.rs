@@ -35,7 +35,7 @@ where
 {
     pub fn new(points: Vec<&'point L>) -> Self {
         Self {
-            root: TreeNode::new(points)
+            root: TreeNode::new(points),
         }
     }
 
@@ -69,7 +69,9 @@ where
     L: Locatable + Eq + Hash,
 {
     fn default() -> Self {
-        Self { root: TreeNode::default() }
+        Self {
+            root: TreeNode::default(),
+        }
     }
 }
 
@@ -92,7 +94,7 @@ where
     }
 
     fn insert(&mut self, point: &'point L) -> bool {
-        if !self.contains(point) {
+        if !self.with_in(point) {
             return false;
         }
         if self.points.len() < self.capacity {
@@ -121,14 +123,14 @@ where
         let splitted_bounding_boxes = self.bounding_box.split();
 
         let mut children = [
-            Box::new(TreeNode::default()),
-            Box::new(TreeNode::default()),
-            Box::new(TreeNode::default()),
-            Box::new(TreeNode::default()),
-            Box::new(TreeNode::default()),
-            Box::new(TreeNode::default()),
-            Box::new(TreeNode::default()),
-            Box::new(TreeNode::default()),
+            Box::<TreeNode<'_, L>>::default(),
+            Box::<TreeNode<'_, L>>::default(),
+            Box::<TreeNode<'_, L>>::default(),
+            Box::<TreeNode<'_, L>>::default(),
+            Box::<TreeNode<'_, L>>::default(),
+            Box::<TreeNode<'_, L>>::default(),
+            Box::<TreeNode<'_, L>>::default(),
+            Box::<TreeNode<'_, L>>::default(),
         ];
 
         for (i, splitted_bounding_box) in splitted_bounding_boxes.iter().enumerate() {
@@ -161,14 +163,15 @@ where
         ret
     }
 
-    fn query(&self, bounding_box: & BoundingBox) -> HashSet<&L> {
+    fn query(&self, bounding_box: &BoundingBox) -> HashSet<&L> {
         let mut ret = HashSet::new();
         if !self.bounding_box.overlaps(bounding_box) {
-            return ret
+            return ret;
         }
         for point in &self.points {
             if bounding_box.with_in(&point.get_location()) {
-                ret.insert(*point); }
+                ret.insert(*point);
+            }
         }
         if self.splitted {
             for child in self.children.as_ref().unwrap().iter() {
@@ -178,10 +181,9 @@ where
         ret
     }
 
-    fn overlaps(&self, bounding_box: & BoundingBox) -> bool {
+    fn overlaps(&self, bounding_box: &BoundingBox) -> bool {
         self.bounding_box.overlaps(bounding_box)
     }
-
 }
 
 impl<'point, L> Default for TreeNode<'point, L>
@@ -452,5 +454,4 @@ mod tests {
         assert_eq!(tree_node.capacity, 8);
         assert!(!tree_node.splitted);
     }
-
 }
