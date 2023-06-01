@@ -77,5 +77,4 @@ mod tests {
         assert!(set.contains(&point2));
         assert!(!set.contains(&point3));
     }
-
 }
