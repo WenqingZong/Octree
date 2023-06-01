@@ -40,3 +40,28 @@ jobs:
 
         - name: Upload to codecov.io
           uses: codecov/codecov-action@v3
+
+  publish_documentation:
+    name: Publish Documentation to Github IO
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@3
+
+      - name: Build Documentaiton
+        run: cargo doc --all --no-deps
+
+      - name: Make index.html a link to help.html
+        run: cd target/doc && ln -s help.html index.html
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v1
+        with:
+          path: target/doc
+
+      - name: Deploy Pages artifact
+        id: deployment
+        uses: actions/deploy-pages@v1
