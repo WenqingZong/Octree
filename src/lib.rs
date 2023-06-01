@@ -1,5 +1,8 @@
 //! A highly optimized [octree](https://en.wikipedia.org/wiki/Octree) implementation, with threading enabled for improved efficiency. This octree implementation is also capable of tracking highly dynamic environment.
 
+use std::collections::HashSet;
+use std::hash::Hash;
+
 pub mod point;
 /// Calculates the location of your object in a 3d space.
 pub trait Locatable {
@@ -8,14 +11,14 @@ pub trait Locatable {
 
 #[derive(Debug)]
 pub struct Octree<'point, L> {
-    root: Option<Box<TreeNode<'point, L>>>,
+    root: TreeNode<'point, L>,
 }
 
 #[derive(Debug)]
 pub struct TreeNode<'point, L> {
     children: Option<[Box<TreeNode<'point, L>>; 8]>,
     bounding_box: BoundingBox,
-    points: Vec<&'point L>,
+    points: HashSet<&'point L>,
     capacity: usize,
     splitted: bool,
 }
@@ -28,42 +31,53 @@ pub struct BoundingBox {
 
 impl<'point, L> Octree<'point, L>
 where
-    L: Locatable,
+    L: Locatable + Eq + Hash,
 {
-    pub fn new(points: Vec<&L>) -> Self {
-        todo!()
-        // Self {
-        //     root: Some(Box::new(TreeNode::default()))
-        // }
+    pub fn new(points: Vec<&'point L>) -> Self {
+        Self {
+            root: TreeNode::new(points)
+        }
     }
 
-    pub fn insert(&mut self, point: &L) {}
-
-    pub fn delete(&mut self, point: &L) {}
-
-    pub fn query(&self, bounding_box: &BoundingBox) -> Vec<&L> {
-        todo!()
+    pub fn insert(&mut self, point: &'point L) -> bool {
+        self.root.insert(point)
     }
 
-    pub fn contain(&self, point: &L) -> bool {
-        todo!();
+    pub fn delete(&mut self, point: &'point L) -> bool {
+        self.root.delete(point)
+    }
+
+    pub fn query(&self, bounding_box: &BoundingBox) -> HashSet<&L> {
+        self.root.query(bounding_box)
+    }
+
+    pub fn contains(&self, point: &L) -> bool {
+        self.root.contains(point)
+    }
+
+    pub fn with_in(&self, point: &L) -> bool {
+        self.root.with_in(point)
+    }
+
+    pub fn overlaps(&self, bounding_box: &BoundingBox) -> bool {
+        self.root.overlaps(bounding_box)
     }
 }
 
 impl<'point, L> Default for Octree<'point, L>
 where
-    L: Locatable,
+    L: Locatable + Eq + Hash,
 {
     fn default() -> Self {
-        Self { root: None }
+        Self { root: TreeNode::default() }
     }
 }
 
 impl<'point, L> TreeNode<'point, L>
 where
-    L: Locatable,
+    L: Locatable + Eq + Hash,
 {
-    pub fn new(points: Vec<&'point L>) -> Self {
+    fn new(points: Vec<&'point L>) -> Self {
         let mut tree_node: TreeNode<L> = TreeNode {
             // So the created bounding box contains every point in points.
             bounding_box: BoundingBox::new(points.clone()),
@@ -82,7 +96,7 @@ where
             return false;
         }
         if self.points.len() < self.capacity {
-            self.points.push(point);
+            self.points.insert(point);
             true
         } else {
             if !self.splitted {
@@ -103,7 +117,7 @@ where
     fn split(&mut self) {
         assert!(self.children.is_none());
         self.splitted = true;
-        // children: Option<[Box<TreeNode<'point, L>>; 8]>,
+
         let splitted_bounding_boxes = self.bounding_box.split();
 
         let mut children = [
@@ -124,20 +138,61 @@ where
         self.children = Some(children);
     }
 
-    fn contains(&self, point: &L) -> bool {
-        self.bounding_box.contains(&point.get_location())
+    fn with_in(&self, point: &L) -> bool {
+        self.bounding_box.with_in(&point.get_location())
     }
+
+    fn contains(&self, point: &L) -> bool {
+        self.points.contains(point)
+    }
+
+    fn delete(&mut self, point: &L) -> bool {
+        let ret = self.points.remove(point);
+        if ret {
+            if let Some(children) = &mut self.children {
+                for child in children.iter_mut() {
+                    child.delete(point);
+                }
+            }
+            // TODO: 7 children contain nothing and only one child contains some point, then re-merge them into 1 node
+            // to reduce tree depth.
+            // Possible performance improvement?
+        }
+        ret
+    }
+
+    fn query(&self, bounding_box: & BoundingBox) -> HashSet<&L> {
+        let mut ret = HashSet::new();
+        if !self.bounding_box.overlaps(bounding_box) {
+            return ret
+        }
+        for point in &self.points {
+            if bounding_box.with_in(&point.get_location()) {
+                ret.insert(*point); }
+        }
+        if self.splitted {
+            for child in self.children.as_ref().unwrap().iter() {
+                ret.extend(child.query(bounding_box));
+            }
+        }
+        ret
+    }
+
+    fn overlaps(&self, bounding_box: & BoundingBox) -> bool {
+        self.bounding_box.overlaps(bounding_box)
+    }
+
 }
 
 impl<'point, L> Default for TreeNode<'point, L>
 where
-    L: Locatable,
+    L: Locatable + Eq + Hash,
 {
     fn default() -> Self {
         Self {
             children: None,
             bounding_box: BoundingBox::default(),
-            points: Vec::new(),
+            points: HashSet::new(),
             capacity: 8,
             splitted: false,
         }
@@ -163,7 +218,7 @@ impl BoundingBox {
         BoundingBox { min, max }
     }
 
-    pub fn contains(&self, point: &[f32; 3]) -> bool {
+    pub fn with_in(&self, point: &[f32; 3]) -> bool {
         self.min[0] <= point[0]
             && point[0] < self.max[0]
             && self.min[1] <= point[1]
@@ -191,7 +246,7 @@ impl BoundingBox {
             other_point7,
             other_point8,
         ] {
-            if self.contains(&point) {
+            if self.with_in(&point) {
                 return true;
             }
         }
@@ -294,15 +349,15 @@ mod tests {
     }
 
     #[test]
-    fn test_bounding_box_contains() {
+    fn test_bounding_box_with_in() {
         let point1 = Point3D::new(0.0, 0.0, 0.0);
         let point2 = Point3D::new(10.0, 10.0, 10.0);
         let bounding_box = BoundingBox::new(vec![point1, point2].iter().collect());
         let point3 = Point3D::new(5.0, 5.0, 5.0);
         let point4 = Point3D::new(10.0, 11.0, 9.0);
 
-        assert!(bounding_box.contains(&point3.get_location()));
-        assert!(!bounding_box.contains(&point4.get_location()));
+        assert!(bounding_box.with_in(&point3.get_location()));
+        assert!(!bounding_box.with_in(&point4.get_location()));
     }
 
     #[test]
@@ -393,7 +448,7 @@ mod tests {
         assert!(tree_node.children.is_none());
         assert_eq!(tree_node.bounding_box.min, [0.0, 0.0, 0.0]);
         assert_eq!(tree_node.bounding_box.max, [10.0, 10.0, 10.0]);
-        assert_eq!(tree_node.points, vec![&point1]);
+        assert_eq!(tree_node.points, HashSet::from([&point1]));
         assert_eq!(tree_node.capacity, 8);
         assert!(!tree_node.splitted);
     }
