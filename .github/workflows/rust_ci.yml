@@ -1,14 +1,14 @@
 name: Rust CI
 on:
   push:
-    paths:
-      - src/*
+    branches: [ main ]
 
 env:
   RUSTFLAGS: "-Dwarnings"
 
 jobs:
   code_quality:
+    name: Check Code Quality
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -26,6 +26,7 @@ jobs:
         run: cargo clippy --all --all-targets --all-features
 
   test_coverage:
+    name: Calculate Test Coverage
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     steps:
