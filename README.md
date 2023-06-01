@@ -16,3 +16,4 @@ Things to do in the near future:
  - Extend to multi-thread, can use [adriankrupa](https://github.com/adriankrupa/Octree)'s `C++` implementation as a reference.
  - Benchmarking. Currently the fastest `rust` Octree is [this](https://crates.io/crates/octree) crate, but it's implemented in single thread as well. It's expected that a multi-thread implementation performs faster.
  - A demo. Could use this library to reimplement my [N Body Simulator](https://github.com/WenqingZong/N-Body-Simulator). My current simulator was a coursework for `Computer Graphics` course at The University of Manchester, it used `python` with an $O(n^2)$ algorithm to calculate acceleration, its `FPS` is horrible.
+ - Publish to [crates.io](https://crates.io) when the multithread feature is ready.
