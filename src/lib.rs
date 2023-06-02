@@ -15,7 +15,7 @@ pub struct Octree<'point, L> {
 }
 
 #[derive(Debug)]
-pub struct TreeNode<'point, L> {
+struct TreeNode<'point, L> {
     children: Option<[Box<TreeNode<'point, L>>; 8]>,
     bounding_box: BoundingBox,
     points: HashSet<&'point L>,
@@ -55,8 +55,8 @@ where
         self.root.contains(point)
     }
 
-    pub fn with_in(&self, point: &L) -> bool {
-        self.root.with_in(point)
+    pub fn covers(&self, point: &L) -> bool {
+        self.root.covers(point)
     }
 
     pub fn overlaps(&self, bounding_box: &BoundingBox) -> bool {
@@ -74,6 +74,32 @@ where
         }
     }
 }
+
+impl<'point, L> PartialEq for Octree<'point, L>
+where
+    L: Locatable + Eq + Hash,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.root == other.root
+    }
+}
+
+impl<'point, L> Eq for Octree<'point, L> where L: Locatable + Eq + Hash {}
+
+impl<'point, L> PartialEq for TreeNode<'point, L>
+where
+    L: Locatable + Eq + Hash,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.children == other.children
+            && self.bounding_box == other.bounding_box
+            && self.points == other.points
+            && self.capacity == other.capacity
+            && self.splitted == other.splitted
+    }
+}
+
+impl<'point, L> Eq for TreeNode<'point, L> where L: Locatable + Eq + Hash {}
 
 impl<'point, L> TreeNode<'point, L>
 where
@@ -94,7 +120,7 @@ where
     }
 
     fn insert(&mut self, point: &'point L) -> bool {
-        if !self.with_in(point) {
+        if !self.covers(point) {
             return false;
         }
         if self.points.len() < self.capacity {
@@ -140,8 +166,8 @@ where
         self.children = Some(children);
     }
 
-    fn with_in(&self, point: &L) -> bool {
-        self.bounding_box.with_in(&point.get_location())
+    fn covers(&self, point: &L) -> bool {
+        self.bounding_box.covers(&point.get_location())
     }
 
     fn contains(&self, point: &L) -> bool {
@@ -169,7 +195,7 @@ where
             return ret;
         }
         for point in &self.points {
-            if bounding_box.with_in(&point.get_location()) {
+            if bounding_box.covers(&point.get_location()) {
                 ret.insert(*point);
             }
         }
@@ -220,7 +246,7 @@ impl BoundingBox {
         BoundingBox { min, max }
     }
 
-    pub fn with_in(&self, point: &[f32; 3]) -> bool {
+    pub fn covers(&self, point: &[f32; 3]) -> bool {
         self.min[0] <= point[0]
             && point[0] < self.max[0]
             && self.min[1] <= point[1]
@@ -248,7 +274,7 @@ impl BoundingBox {
             other_point7,
             other_point8,
         ] {
-            if self.with_in(&point) {
+            if self.covers(&point) {
                 return true;
             }
         }
@@ -340,29 +366,35 @@ mod tests {
     use super::*;
 
     #[test]
+    /// Should construct bounding box with the specified min and max corner.
     fn test_bounding_box_construction() {
         let point1 = Point3D::new(10.0, 0.0, 0.0);
         let point2 = Point3D::new(0.0, -1.0, 0.0);
         let point3 = Point3D::new(0.0, 0.0, 5.0);
         let bounding_box = BoundingBox::new(vec![point1, point2, point3].iter().collect());
 
-        assert_eq!(bounding_box.min, [0.0, -1.0, 0.0]);
-        assert_eq!(bounding_box.max, [10.0, 0.0, 5.0]);
+        assert_eq!(bounding_box.get_min(), &[0.0, -1.0, 0.0]);
+        assert_eq!(bounding_box.get_max(), &[10.0, 0.0, 5.0]);
     }
 
     #[test]
-    fn test_bounding_box_with_in() {
+    /// Should identify if a point is covered by this area.
+    /// Note that the bounding box covers min surface but does not cover max surface.
+    fn test_bounding_box_covers() {
         let point1 = Point3D::new(0.0, 0.0, 0.0);
         let point2 = Point3D::new(10.0, 10.0, 10.0);
-        let bounding_box = BoundingBox::new(vec![point1, point2].iter().collect());
+        let bounding_box = BoundingBox::new(vec![point1.clone(), point2.clone()].iter().collect());
         let point3 = Point3D::new(5.0, 5.0, 5.0);
         let point4 = Point3D::new(10.0, 11.0, 9.0);
 
-        assert!(bounding_box.with_in(&point3.get_location()));
-        assert!(!bounding_box.with_in(&point4.get_location()));
+        assert!(bounding_box.covers(&point1.get_location()));
+        assert!(!bounding_box.covers(&point2.get_location()));
+        assert!(bounding_box.covers(&point3.get_location()));
+        assert!(!bounding_box.covers(&point4.get_location()));
     }
 
     #[test]
+    /// Should identify if two bounding boxes overlaps / intersects.
     fn test_bounding_box_overlaps() {
         let point1 = Point3D::new(0.0, 0.0, 0.0);
         let point2 = Point3D::new(10.0, 10.0, 10.0);
@@ -386,6 +418,7 @@ mod tests {
     }
 
     #[test]
+    /// Should correctly calculate bounding box centre coordination.
     fn test_bounding_box_centre() {
         let point1 = Point3D::new(0.0, 0.0, 0.0);
         let point2 = Point3D::new(10.0, 10.0, 10.0);
@@ -395,6 +428,7 @@ mod tests {
     }
 
     #[test]
+    /// Should split the current bounding box into 8 smaller bounding boxes.
     fn test_bounding_box_split() {
         let point1 = Point3D::new(0.0, 0.0, 0.0);
         let point2 = Point3D::new(10.0, 10.0, 10.0);
@@ -440,6 +474,18 @@ mod tests {
     }
 
     #[test]
+    /// Should construct a tree node with default settings.
+    fn test_tree_node_default_construction() {
+        let tree_node: TreeNode<Point3D> = TreeNode::default();
+        assert!(tree_node.children.is_none());
+        assert_eq!(tree_node.bounding_box, BoundingBox::default());
+        assert_eq!(tree_node.points, HashSet::new());
+        assert_eq!(tree_node.capacity, 8);
+        assert!(!tree_node.splitted);
+    }
+
+    #[test]
+    /// Should construct a tree node and do not further split.
     fn test_tree_node_construction_no_split() {
         let point1 = Point3D::new(0.0, 0.0, 0.0);
         let point2 = Point3D::new(10.0, 10.0, 10.0);
@@ -453,5 +499,140 @@ mod tests {
         assert_eq!(tree_node.points, HashSet::from([&point1]));
         assert_eq!(tree_node.capacity, 8);
         assert!(!tree_node.splitted);
+    }
+
+    #[test]
+    /// Should construct an octree with default settings.
+    fn test_octree_default_construction() {
+        let octree: Octree<Point3D> = Octree::default();
+
+        assert_eq!(octree.root, TreeNode::default());
+    }
+
+    #[test]
+    /// Should construct an octree from some given points.
+    fn test_octree_construction() {
+        let point1 = Point3D::new(0.0, 0.0, 0.0);
+        let point2 = Point3D::new(10.0, 10.0, 10.0);
+        let points = vec![point1, point2];
+        let octree = Octree::new(points.iter().collect());
+        let tree_node = TreeNode::new(points.iter().collect());
+
+        assert_eq!(octree.root, tree_node);
+    }
+
+    #[test]
+    /// Should insert a point into octree if the octree covers it, and does nothing if not.
+    fn test_octree_insert() {
+        let point1 = Point3D::new(0.0, 0.0, 0.0);
+        let point2 = Point3D::new(10.0, 10.0, 10.0);
+        let point3 = Point3D::new(5.0, 5.0, 5.0);
+        let points = vec![point1.clone(), point2.clone()];
+        let mut octree1 = Octree::new(points.iter().collect());
+        octree1.insert(&point3);
+        let all_points = vec![point1, point2, point3.clone()];
+        let octree2 = Octree::new(all_points.iter().collect());
+
+        assert_eq!(octree1, octree2);
+
+        let point4 = Point3D::new(20.0, 20.0, 20.0);
+        octree1.insert(&point4);
+
+        assert_eq!(octree1, octree2);
+    }
+
+    #[test]
+    /// Should delete a point from octree if the point is recorded, and does nothing if not.
+    fn test_octree_delete() {
+        let point1 = Point3D::new(0.0, 0.0, 0.0);
+        let point2 = Point3D::new(5.0, 5.0, 5.0);
+        let point3 = Point3D::new(10.0, 10.0, 10.0);
+        let points = vec![point1.clone(), point3.clone()];
+        let all_points = vec![point1, point2.clone(), point3];
+        let mut octree1 = Octree::new(all_points.iter().collect());
+        octree1.delete(&point2);
+        let octree2 = Octree::new(points.iter().collect());
+
+        assert_eq!(octree1, octree2);
+
+        let point4 = Point3D::new(100.0, 100.0, 100.0);
+        octree1.delete(&point4);
+
+        assert_eq!(octree1, octree2);
+    }
+
+    #[test]
+    /// Should correctly identify if a point can be covered by a octree.
+    fn test_octree_covers() {
+        let point1 = Point3D::new(0.0, 0.0, 0.0);
+        let point2 = Point3D::new(5.0, 5.0, 5.0);
+        let points = vec![point1, point2];
+        let octree = Octree::new(points.iter().collect());
+        let point3 = Point3D::new(10.0, 10.0, 10.0);
+        let point4 = Point3D::new(2.0, 2.0, 2.0);
+
+        assert!(octree.covers(&point4));
+        assert!(!octree.covers(&point3));
+    }
+
+    #[test]
+    /// Should correctly identify if a point is recorded.
+    fn test_octree_contains() {
+        let point1 = Point3D::new(0.0, 0.0, 0.0);
+        let point2 = Point3D::new(5.0, 5.0, 5.0);
+        let points = vec![point1.clone(), point2.clone()];
+        let octree = Octree::new(points.iter().collect());
+        let point3 = Point3D::new(2.0, 2.0, 2.0);
+
+        assert!(octree.contains(&point1));
+        // Because the bounding box contains the min surface but does not contain the max surface.
+        assert!(!octree.contains(&point2));
+        assert!(!octree.contains(&point3));
+    }
+
+    #[test]
+    /// Should find all points within the given query area.
+    fn test_octree_query() {
+        let point1 = Point3D::new(0.0, 0.0, 0.0);
+        let point2 = Point3D::new(10.0, 10.0, 10.0);
+        let point3 = Point3D::new(4.0, 4.0, 4.0);
+        let points = vec![point1.clone(), point2];
+        let mut octree = Octree::new(points.iter().collect());
+        let point4 = Point3D::new(5.0, 10.0, 5.0);
+        octree.insert(&point3);
+        octree.insert(&point4);
+
+        let points_for_query = vec![point1.clone(), point4.clone()];
+        let bounding_box = BoundingBox::new(points_for_query.iter().collect());
+
+        assert_eq!(
+            octree.query(&bounding_box),
+            HashSet::from([&point1, &point3])
+        );
+    }
+
+    #[test]
+    /// Should identify if a bounding boxes overlaps / intersects with an octree.
+    fn test_octree_overlap() {
+        let point1 = Point3D::new(0.0, 0.0, 0.0);
+        let point2 = Point3D::new(10.0, 10.0, 10.0);
+        let points = vec![point1, point2];
+        let octree = Octree::new(points.iter().collect());
+
+        let point3 = Point3D::new(1.0, 1.0, 1.0);
+        let point4 = Point3D::new(11.0, 11.0, 11.0);
+        let bounding_box1 = BoundingBox::new(vec![point3, point4].iter().collect());
+
+        let point5 = Point3D::new(1.0, 1.0, 1.0);
+        let point6 = Point3D::new(9.0, 9.0, 9.0);
+        let bounding_box2 = BoundingBox::new(vec![point5, point6].iter().collect());
+
+        let point7 = Point3D::new(11.0, 0.0, 0.0);
+        let point8 = Point3D::new(20.0, 20.0, 20.0);
+        let bounding_box3 = BoundingBox::new(vec![point7, point8].iter().collect());
+
+        assert!(octree.overlaps(&bounding_box1));
+        assert!(octree.overlaps(&bounding_box2));
+        assert!(!octree.overlaps(&bounding_box3));
     }
 }
