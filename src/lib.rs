@@ -4,16 +4,20 @@ use std::collections::HashSet;
 use std::hash::Hash;
 
 pub mod point;
-/// Calculates the location of your object in a 3d space.
+/// Calculates the location of your object in a 3d space. Your data structure must implement this trait so [Octree] can
+/// can get location of each data point. A sample implementation is provided in [Point3D](point::Point3D).
 pub trait Locatable {
     fn get_location(&self) -> [f32; 3];
 }
 
+/// The [Octree](https://en.wikipedia.org/wiki/Octree) data structure.
 #[derive(Debug)]
 pub struct Octree<'point, L> {
     root: TreeNode<'point, L>,
 }
 
+/// Recursive data structure for tree node. Its children is None if not splitted. If splitted, then its children is an
+/// array of length 8 of (points of) sub tree nodes.
 #[derive(Debug)]
 struct TreeNode<'point, L> {
     children: Option<[Box<TreeNode<'point, L>>; 8]>,
@@ -23,6 +27,7 @@ struct TreeNode<'point, L> {
     splitted: bool,
 }
 
+/// Bounding box defines a 3D space.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BoundingBox {
     min: [f32; 3],
@@ -33,32 +38,170 @@ impl<'point, L> Octree<'point, L>
 where
     L: Locatable + Eq + Hash,
 {
+    /// Construct an [Octree] that covers all given points.
+    /// # Example
+    /// ```
+    /// use octree::point::Point3D;
+    /// use octree::Octree;
+    ///
+    /// let point1 = Point3D::new(0.0, 0.0, 0.0);
+    /// let point2 = Point3D::new(10.0, 10.0, 10.0);
+    ///
+    /// // Note points takes ownership of the above two points.
+    /// let points = vec![point1, point2];
+    ///
+    /// let octree = Octree::new(points.iter().collect());
+    /// ```
     pub fn new(points: Vec<&'point L>) -> Self {
         Self {
             root: TreeNode::new(points),
         }
     }
 
+    /// Insert a new point. If [Octree] does not cover the new point then nothing will change.
+    /// # Example
+    /// ```
+    /// use octree::point::Point3D;
+    /// use octree::Octree;
+    ///
+    /// let point1 = Point3D::new(0.0, 0.0, 0.0);
+    /// let point2 = Point3D::new(10.0, 10.0, 10.0);
+    /// let point3 = Point3D::new(5.0, 5.0, 5.0);
+    /// let point4 = Point3D::new(20.0, 20.0, 20.0);
+    ///
+    /// // Note points takes ownership of the above two points.
+    /// let points = vec![point1, point2];
+    /// let mut octree = Octree::new(points.iter().collect());
+    ///
+    /// assert!(octree.insert(&point3));
+    /// assert!(!octree.insert(&point4));
+    /// ```
     pub fn insert(&mut self, point: &'point L) -> bool {
         self.root.insert(point)
     }
 
+    /// Delete a point from current [Octree], if the point is not in the tree, then nothing will change.
+    /// # Example
+    /// ```
+    /// use octree::point::Point3D;
+    /// use octree::Octree;
+    ///
+    /// let point1 = Point3D::new(0.0, 0.0, 0.0);
+    /// let point2 = Point3D::new(10.0, 10.0, 10.0);
+    /// let point3 = Point3D::new(20.0, 20.0, 20.0);
+    ///
+    /// let points = vec![point1.clone(), point2];
+    /// let mut octree = Octree::new(points.iter().collect());
+    ///
+    /// assert!(octree.delete(&point1));
+    /// assert!(!octree.delete(&point3));
+    /// ```
     pub fn delete(&mut self, point: &'point L) -> bool {
         self.root.delete(point)
     }
 
+    /// Find all points covered by a specified [BoundingBox].
+    /// # Example
+    /// ```
+    /// use std::collections::HashSet;
+    ///
+    /// use octree::point::Point3D;
+    /// use octree::{BoundingBox, Octree};
+    ///
+    /// // Build an example octree.
+    /// let point1 = Point3D::new(0.0, 0.0, 0.0);
+    /// let point2 = Point3D::new(10.0, 10.0, 10.0);
+    /// let point3 = Point3D::new(4.0, 4.0, 4.0);
+    /// let points = vec![point1.clone(), point2];
+    /// let mut octree = Octree::new(points.iter().collect());
+    /// let point4 = Point3D::new(5.0, 10.0, 5.0);
+    /// octree.insert(&point3);
+    /// octree.insert(&point4);
+    ///
+    /// let points_for_query = vec![point1.clone(), point4.clone()];
+    /// let bounding_box = BoundingBox::new(points_for_query.iter().collect());
+    ///
+    /// assert_eq!(
+    ///     // The actual query.
+    ///     octree.query(&bounding_box),
+    ///     HashSet::from([&point1, &point3])
+    /// );
+    /// ```
     pub fn query(&self, bounding_box: &BoundingBox) -> HashSet<&L> {
         self.root.query(bounding_box)
     }
 
+    /// Check if a point is already recorded.
+    /// # Example
+    /// ```
+    /// use octree::point::Point3D;
+    /// use octree::Octree;
+    ///
+    /// let point1 = Point3D::new(0.0, 0.0, 0.0);
+    /// let point2 = Point3D::new(10.0, 10.0, 10.0);
+    /// let point3 = Point3D::new(20.0, 20.0, 20.0);
+    ///
+    /// let points = vec![point1.clone(), point2];
+    ///
+    /// let octree = Octree::new(points.iter().collect());
+    ///
+    /// assert!(octree.contains(&point1));
+    /// assert!(!octree.contains(&point3));
+    /// ```
     pub fn contains(&self, point: &L) -> bool {
         self.root.contains(point)
     }
 
+    /// Check if a point can be covered by the current [Octree].
+    /// # Example
+    /// ```
+    /// use octree::point::Point3D;
+    /// use octree::Octree;
+    ///
+    /// let point1 = Point3D::new(0.0, 0.0, 0.0);
+    /// let point2 = Point3D::new(10.0, 10.0, 10.0);
+    /// let point3 = Point3D::new(5.0, 5.0, 5.0);
+    /// let point4 = Point3D::new(20.0, 20.0, 20.0);
+    ///
+    /// // Note points takes ownership of the above two points.
+    /// let points = vec![point1, point2];
+    ///
+    /// let octree = Octree::new(points.iter().collect());
+    ///
+    /// assert!(octree.covers(&point3));
+    /// assert!(!octree.covers(&point4));
+    /// ```
     pub fn covers(&self, point: &L) -> bool {
         self.root.covers(point)
     }
 
+    /// Check if the space occupied by current [Octree] overlap with a given [BoundingBox].
+    /// # Example
+    /// ```
+    /// use octree::point::Point3D;
+    /// use octree::{BoundingBox, Octree};
+    ///
+    /// let point1 = Point3D::new(0.0, 0.0, 0.0);
+    /// let point2 = Point3D::new(10.0, 10.0, 10.0);
+    /// let points = vec![point1, point2];
+    /// let octree = Octree::new(points.iter().collect());
+    ///
+    /// let point3 = Point3D::new(1.0, 1.0, 1.0);
+    /// let point4 = Point3D::new(11.0, 11.0, 11.0);
+    /// let bounding_box1 = BoundingBox::new(vec![point3, point4].iter().collect());
+    ///
+    /// let point5 = Point3D::new(1.0, 1.0, 1.0);
+    /// let point6 = Point3D::new(9.0, 9.0, 9.0);
+    /// let bounding_box2 = BoundingBox::new(vec![point5, point6].iter().collect());
+    ///
+    /// let point7 = Point3D::new(11.0, 0.0, 0.0);
+    /// let point8 = Point3D::new(20.0, 20.0, 20.0);
+    /// let bounding_box3 = BoundingBox::new(vec![point7, point8].iter().collect());
+    ///
+    /// assert!(octree.overlaps(&bounding_box1));
+    /// assert!(octree.overlaps(&bounding_box2));
+    /// assert!(!octree.overlaps(&bounding_box3));
+    /// ```
     pub fn overlaps(&self, bounding_box: &BoundingBox) -> bool {
         self.root.overlaps(bounding_box)
     }
@@ -75,6 +218,7 @@ where
     }
 }
 
+// Implement PartialEq and Eq to make testing easier.
 impl<'point, L> PartialEq for Octree<'point, L>
 where
     L: Locatable + Eq + Hash,
@@ -86,6 +230,7 @@ where
 
 impl<'point, L> Eq for Octree<'point, L> where L: Locatable + Eq + Hash {}
 
+// Implement PartialEq and Eq to make testing easier.
 impl<'point, L> PartialEq for TreeNode<'point, L>
 where
     L: Locatable + Eq + Hash,
@@ -120,18 +265,21 @@ where
     }
 
     fn insert(&mut self, point: &'point L) -> bool {
+        // Do nothing is the point won't be covered by current node.
         if !self.covers(point) {
             return false;
         }
+        // Yes, we have enough remaining space.
         if self.points.len() < self.capacity {
             self.points.insert(point);
             true
         } else {
+            // Already have 8 points, should split further.
             if !self.splitted {
                 self.split();
             }
 
-            assert!(self.children.is_some());
+            // Ask all children: does this point belongs to you?
             for child in self.children.as_mut().unwrap().iter_mut() {
                 let child = child.as_mut();
                 if child.insert(point) {
@@ -143,11 +291,11 @@ where
     }
 
     fn split(&mut self) {
-        assert!(self.children.is_none());
         self.splitted = true;
 
         let splitted_bounding_boxes = self.bounding_box.split();
 
+        // Place holder for the 8 new nodes.
         let mut children = [
             Box::<TreeNode<'_, L>>::default(),
             Box::<TreeNode<'_, L>>::default(),
@@ -159,6 +307,7 @@ where
             Box::<TreeNode<'_, L>>::default(),
         ];
 
+        // Assign new bounding box to placeholders.
         for (i, splitted_bounding_box) in splitted_bounding_boxes.iter().enumerate() {
             children[i].bounding_box = splitted_bounding_box.clone();
         }
@@ -175,6 +324,7 @@ where
     }
 
     fn delete(&mut self, point: &L) -> bool {
+        // HashSet returns false if removes a non-existing element.
         let ret = self.points.remove(point);
         if ret {
             if let Some(children) = &mut self.children {
@@ -190,15 +340,22 @@ where
     }
 
     fn query(&self, bounding_box: &BoundingBox) -> HashSet<&L> {
+        // Place holder for the query answer.
         let mut ret = HashSet::new();
+
+        // If they do not overlap, then we won't find any points in this sub tree which is covered by the query bounding
+        // box.
         if !self.bounding_box.overlaps(bounding_box) {
             return ret;
         }
         for point in &self.points {
             if bounding_box.covers(&point.get_location()) {
+                // point is of type &&L.
                 ret.insert(*point);
             }
         }
+
+        // Recursively ask sub tree if they have something covered by the query bounding box.
         if self.splitted {
             for child in self.children.as_ref().unwrap().iter() {
                 ret.extend(child.query(bounding_box));
@@ -228,6 +385,16 @@ where
 }
 
 impl BoundingBox {
+    /// Construct a new [BoundingBox] which can hold all given points.
+    /// # Example
+    /// ```
+    /// use octree::point::Point3D;
+    /// use octree::BoundingBox;
+    ///
+    /// let point1 = Point3D::new(0.0, 0.0, 0.0);
+    /// let point2 = Point3D::new(10.0, 10.0, 10.0);
+    /// let bounding_box = BoundingBox::new(vec![point1, point2].iter().collect());
+    /// ```
     pub fn new<L>(points: Vec<&L>) -> Self
     where
         L: Locatable,
@@ -235,6 +402,7 @@ impl BoundingBox {
         let mut min = [f32::MAX, f32::MAX, f32::MAX];
         let mut max = [f32::MIN, f32::MIN, f32::MIN];
 
+        // Linear search to find the min and max point.
         for point in points {
             let location = point.get_location();
             for i in 0..3 {
@@ -246,6 +414,21 @@ impl BoundingBox {
         BoundingBox { min, max }
     }
 
+    /// Check if a point can be covered by this [BoundingBox].
+    /// # Example
+    /// ```
+    /// use octree::point::Point3D;
+    /// use octree::{BoundingBox, Locatable};
+    ///
+    /// let point1 = Point3D::new(0.0, 0.0, 0.0);
+    /// let point2 = Point3D::new(10.0, 10.0, 10.0);
+    /// let point3 = Point3D::new(5.0, 5.0, 5.0);
+    /// let point4 = Point3D::new(20.0, 20.0, 20.0);
+    /// let bounding_box = BoundingBox::new(vec![point1, point2].iter().collect());
+    ///
+    /// assert!(bounding_box.covers(&point3.get_location()));
+    /// assert!(!bounding_box.covers(&point4.get_location()));
+    /// ```
     pub fn covers(&self, point: &[f32; 3]) -> bool {
         self.min[0] <= point[0]
             && point[0] < self.max[0]
@@ -255,6 +438,7 @@ impl BoundingBox {
             && point[2] < self.max[2]
     }
 
+    /// Check if two [BoundingBox]es overlap.
     pub fn overlaps(&self, other: &BoundingBox) -> bool {
         let other_point1 = other.min;
         let other_point2 = [other.min[0], other.min[1], other.max[2]];
@@ -281,6 +465,7 @@ impl BoundingBox {
         false
     }
 
+    /// Getter for [BoundingBox] centre coordination.
     pub fn get_centre(&self) -> [f32; 3] {
         let mut ret = [0.0; 3];
         for (i, coordinate) in ret.iter_mut().enumerate() {
@@ -289,14 +474,17 @@ impl BoundingBox {
         ret
     }
 
+    /// Getter for [BoundingBox] min corner coordination.
     pub fn get_min(&self) -> &[f32; 3] {
         &self.min
     }
 
+    /// Getter for [BoundingBox] max corner coordination.
     pub fn get_max(&self) -> &[f32; 3] {
         &self.max
     }
 
+    /// Split the [BoundingBox] into 8 sub [BoundingBox]es.
     pub fn split(&self) -> [Self; 8] {
         let centre = self.get_centre();
         let min = self.min;
@@ -352,8 +540,10 @@ impl BoundingBox {
 }
 
 impl Default for BoundingBox {
+    /// Construct a default [BoundingBox], covers the whole space which can be represented by [f32].
     fn default() -> Self {
         Self {
+            // Will be used in min() and max() function later so the initial value of min is f32::MAX.
             min: [f32::MAX, f32::MAX, f32::MAX],
             max: [f32::MIN, f32::MIN, f32::MIN],
         }
