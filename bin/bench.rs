@@ -71,11 +71,12 @@ fn bench_test(points: &Vec<Point3D>) -> BTreeMap<usize, f64> {
 
 fn bench_test_baseline(points: &Vec<Point3D>) -> BTreeMap<usize, f64> {
     let mut results = BTreeMap::new();
-    for i in (0..points.len()).step_by(1000) {
+    for i in (1..points.len()).step_by(1000) {
         results.insert(
             i,
             timeit_loops!(10, {
-                let mut tree = OtherOctree::new(Wapper(points.clone()));
+                let points_used: Vec<Point3D> = points.clone().into_iter().take(i).collect();
+                let mut tree = OtherOctree::new(Wapper(points_used));
                 tree.build(8);
             }),
         );
@@ -89,15 +90,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         eprintln!("\x1b[93mRunning benchmark in debug mode is meaningless. add '--release' option!\x1b[0m");
     }
+    let file = File::open("./data/points.txt")?;
+    let points = read_points(file);
+    let output_path = "./data/bench.png";
+
     // System init, set up inter-thread communication.
     // Ideally, each single-thread benchmark use a separate thread to reduce waiting time.
     let (sender1, receiver1) = mpsc::channel();
     let (sender2, receiver2) = mpsc::channel();
-    let output_path = "./data/bench.png";
     let mut handles = Vec::new();
-
-    let file = File::open("./data/points.txt")?;
-    let points = read_points(file);
 
     let points_cloned = points.clone();
     let sender1_cloned = sender1.clone();
