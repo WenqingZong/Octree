@@ -36,7 +36,7 @@ jobs:
           run: cargo install cargo-tarpaulin
 
         - name: Calculate code coverage
-          run: cargo tarpaulin --verbose --all-features --all --out=Xml
+          run: cargo tarpaulin --verbose --all-features --lib --out=Xml
 
         - name: Upload to codecov.io
           uses: codecov/codecov-action@v3

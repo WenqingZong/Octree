@@ -4,6 +4,8 @@ extern crate timeit;
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::sync::mpsc;
+use std::thread::spawn;
 use std::vec::Vec;
 
 use gnuplot::{AxesCommon, Caption, Figure};
@@ -87,13 +89,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         eprintln!("\x1b[93mRunning benchmark in debug mode is meaningless. add '--release' option!\x1b[0m");
     }
+    // System init, set up inter-thread communication.
+    // Ideally, each single-thread benchmark use a separate thread to reduce waiting time.
+    let (sender1, receiver1) = mpsc::channel();
+    let (sender2, receiver2) = mpsc::channel();
+    let output_path = "./data/bench.png";
+    let mut handles = Vec::new();
 
-    // Open the text file
     let file = File::open("./data/points.txt")?;
     let points = read_points(file);
-    let results = bench_test(&points);
-    let baseline_results = bench_test_baseline(&points);
-    let output_path = "./data/bench.png";
+
+    let points_cloned = points.clone();
+    let sender1_cloned = sender1.clone();
+    handles.push(spawn(move || {
+        let results = bench_test_baseline(&points_cloned);
+        sender1_cloned.send(results).unwrap();
+    }));
+
+    let points_cloned = points;
+    let sender2_cloned = sender2.clone();
+    handles.push(spawn(move || {
+        let results = bench_test(&points_cloned);
+        sender2_cloned.send(results).unwrap();
+    }));
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    let baseline_results = receiver1.recv().unwrap();
+    let results = receiver2.recv().unwrap();
+
+    drop(sender1);
+    drop(sender2);
 
     let mut figure = Figure::new();
     let num_points: Vec<usize> = results.keys().cloned().collect();
