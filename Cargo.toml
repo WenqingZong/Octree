@@ -12,8 +12,15 @@ path = "src/lib.rs"
 
 [[bin]]
 name = "example"
-path = "src/bin/example.rs"
+path = "bin/example.rs"
+
+[[bin]]
+name = "bench"
+path = "bin/bench.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+gnuplot = "0.0.38"
+other_octree = {version = "0.1.0", package = "octree"}
+timeit = "0.1.2"

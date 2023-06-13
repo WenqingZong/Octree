@@ -7,9 +7,9 @@ use crate::Locatable;
 /// all points it has seen, so [PartialEq], [Eq]. and [Hash] must be defined as well.
 #[derive(Clone, Debug, Default)]
 pub struct Point3D {
-    x: f32,
-    y: f32,
-    z: f32,
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
 }
 
 impl PartialEq for Point3D {
