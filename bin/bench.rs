@@ -73,7 +73,8 @@ fn bench_test_baseline(points: &Vec<Point3D>) -> BTreeMap<usize, f64> {
         results.insert(
             i,
             timeit_loops!(10, {
-                OtherOctree::new(Wapper(points.clone()));
+                let mut tree = OtherOctree::new(Wapper(points.clone()));
+                tree.build(8);
             }),
         );
     }
@@ -82,6 +83,11 @@ fn bench_test_baseline(points: &Vec<Point3D>) -> BTreeMap<usize, f64> {
 
 #[cfg_attr(tarpaulin, skip)]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(debug_assertions)]
+    {
+        eprintln!("\x1b[93mRunning benchmark in debug mode is meaningless. add '--release' option!\x1b[0m");
+    }
+
     // Open the text file
     let file = File::open("./data/points.txt")?;
     let points = read_points(file);
@@ -110,5 +116,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .save_to_png(output_path, 800, 600)
         .expect("Failed to save figure");
 
+    println!("Benchmark result is saved to {}", output_path);
     Ok(())
 }
